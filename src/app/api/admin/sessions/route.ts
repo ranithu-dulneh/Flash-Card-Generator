@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { db } from "@/lib/db";
+import { Prisma } from "@prisma/client";
 
 // Helper function to check authorization
 async function isAuthorized(): Promise<boolean> {
@@ -84,7 +85,7 @@ export async function POST(request: Request) {
     }
 
     // Create session and associated flashcards
-    const newSession = await db.$transaction(async (tx) => {
+    const newSession = await db.$transaction(async (tx: Prisma.TransactionClient) => {
       const session = await tx.session.create({
         data: {
           slug: sanitizedSlug,
