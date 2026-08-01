@@ -51,7 +51,7 @@ export default async function StudentSessionPage({ params }: PageProps) {
         id: session.id,
         name: session.name,
         slug: session.slug,
-        flashcards: session.flashcards.map((fc) => ({
+        flashcards: session.flashcards.map((fc: any) => ({
           id: fc.id,
           question: fc.question,
           answer: fc.answer,

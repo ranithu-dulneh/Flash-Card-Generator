@@ -1,12 +1,12 @@
-// This is your Prisma schema file for SQLite
+// This is your Prisma schema file for PostgreSQL
 
 generator client {
   provider = "prisma-client-js"
-  output   = "../src/generated/sqlite"
+  output   = "../src/generated/postgres"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
 }
 
 model Session {

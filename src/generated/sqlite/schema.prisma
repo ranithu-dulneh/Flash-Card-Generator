@@ -18,10 +18,10 @@ model Session {
 }
 
 model Flashcard {
-  id        String   @id @default(uuid())
+  id        String  @id @default(uuid())
   question  String
   answer    String
-  order     Int      @default(0)
+  order     Int     @default(0)
   sessionId String
-  session   Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  session   Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 }

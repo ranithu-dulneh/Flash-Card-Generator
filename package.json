@@ -4,10 +4,10 @@
   "private": true,
   "scripts": {
     "dev": "node ./prisma-setup.js && next dev",
-    "build": "node ./prisma-setup.js && prisma generate && next build",
+    "build": "node ./prisma-setup.js && next build",
     "start": "next start",
     "lint": "eslint",
-    "postinstall": "node ./prisma-setup.js && prisma generate"
+    "postinstall": "node ./prisma-setup.js"
   },
   "dependencies": {
     "@neondatabase/serverless": "^0.10.4",
@@ -23,7 +23,8 @@
     "pg": "^8.12.0",
     "prisma": "^7.9.1",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "ws": "^8.18.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
@@ -32,6 +33,7 @@
     "@types/pg": "^8.11.10",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/ws": "^8.5.14",
     "eslint": "^9",
     "eslint-config-next": "16.2.12",
     "tailwindcss": "^4",
