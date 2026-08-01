@@ -1,4 +1,4 @@
-import { db } from "@/lib/db";
+import { getSession } from "@/lib/firebase";
 import { notFound } from "next/navigation";
 import StudentFlashcardClient from "./StudentFlashcardClient";
 
@@ -10,9 +10,7 @@ interface PageProps {
 
 export async function generateMetadata({ params }: PageProps) {
   const { slug } = await params;
-  const session = await db.session.findUnique({
-    where: { slug },
-  });
+  const session = await getSession(slug);
 
   if (!session) {
     return {
@@ -30,16 +28,7 @@ export default async function StudentSessionPage({ params }: PageProps) {
   const { slug } = await params;
 
   // Fetch session with ordered flashcards
-  const session = await db.session.findUnique({
-    where: { slug },
-    include: {
-      flashcards: {
-        orderBy: {
-          order: "asc",
-        },
-      },
-    },
-  });
+  const session = await getSession(slug);
 
   if (!session) {
     notFound();
@@ -51,11 +40,11 @@ export default async function StudentSessionPage({ params }: PageProps) {
         id: session.id,
         name: session.name,
         slug: session.slug,
-        flashcards: session.flashcards.map((fc: any) => ({
+        flashcards: session.flashcards ? session.flashcards.map((fc: any) => ({
           id: fc.id,
           question: fc.question,
           answer: fc.answer,
-        })),
+        })) : [],
       }}
     />
   );

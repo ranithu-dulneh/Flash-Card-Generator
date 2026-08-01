@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { db } from "@/lib/db";
 import { verifySessionToken } from "@/lib/auth";
+import { getAllSessions, createSession, getSession } from "@/lib/firebase";
 
 // Helper function to check authorization
 async function isAuthorized(): Promise<boolean> {
@@ -21,16 +21,18 @@ export async function GET() {
   }
 
   try {
-    const sessions = await db.session.findMany({
-      include: {
-        _count: {
-          select: { flashcards: true },
-        },
+    const firebaseSessions = await getAllSessions();
+
+    // Format to match UI expectations (with flashcards count)
+    const sessions = firebaseSessions.map((session) => ({
+      id: session.id,
+      slug: session.slug,
+      name: session.name,
+      createdAt: new Date(session.createdAt).toISOString(),
+      _count: {
+        flashcards: session.flashcards ? session.flashcards.length : 0,
       },
-      orderBy: {
-        createdAt: "desc",
-      },
-    });
+    }));
 
     return NextResponse.json({ success: true, sessions });
   } catch (error) {
@@ -73,9 +75,7 @@ export async function POST(request: Request) {
     }
 
     // Check if slug is already taken
-    const existingSession = await db.session.findUnique({
-      where: { slug: sanitizedSlug },
-    });
+    const existingSession = await getSession(sanitizedSlug);
 
     if (existingSession) {
       return NextResponse.json(
@@ -84,34 +84,18 @@ export async function POST(request: Request) {
       );
     }
 
-    // Create session and associated flashcards
-    // Type inference for transaction client dynamically, completely removing dependency on `Prisma` namespace import
-    const newSession = await db.$transaction(async (tx: any) => {
-      const session = await tx.session.create({
-        data: {
-          slug: sanitizedSlug,
-          name: name.trim(),
-        },
-      });
-
-      const cardsData = flashcards.map((card: any, index: number) => ({
-        question: String(card.question || "").trim(),
-        answer: String(card.answer || "").trim(),
-        order: index,
-        sessionId: session.id,
-      }));
-
-      await tx.flashcard.createMany({
-        data: cardsData,
-      });
-
-      return session;
-    });
+    // Create session and associated flashcards via Firebase RTDB
+    const newSession = await createSession(sanitizedSlug, name, flashcards);
 
     return NextResponse.json({
       success: true,
       message: "Session created successfully!",
-      session: newSession,
+      session: {
+        id: newSession.id,
+        slug: newSession.slug,
+        name: newSession.name,
+        createdAt: new Date(newSession.createdAt).toISOString(),
+      },
     });
   } catch (error) {
     console.error("Create session error:", error);

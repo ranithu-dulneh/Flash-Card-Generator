@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { db } from "@/lib/db";
 import { verifySessionToken } from "@/lib/auth";
+import { getAllSessions, deleteSession } from "@/lib/firebase";
 
 // Helper function to check authorization
 async function isAuthorized(): Promise<boolean> {
@@ -33,13 +33,23 @@ export async function DELETE(
       );
     }
 
-    const deleted = await db.session.delete({
-      where: { id },
-    });
+    // Find the session with the matching id
+    const sessions = await getAllSessions();
+    const sessionToDelete = sessions.find((s) => s.id === id);
+
+    if (!sessionToDelete) {
+      return NextResponse.json(
+        { success: false, message: "Session not found" },
+        { status: 404 }
+      );
+    }
+
+    // Delete session from Firebase Realtime Database using its slug
+    await deleteSession(sessionToDelete.slug);
 
     return NextResponse.json({
       success: true,
-      message: `Session "${deleted.name}" deleted successfully`,
+      message: `Session "${sessionToDelete.name}" deleted successfully`,
     });
   } catch (error) {
     console.error("Delete session error:", error);
