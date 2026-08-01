@@ -1,14 +1,14 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { db } from "@/lib/db";
-import { Prisma } from "@prisma/client";
+import { verifySessionToken } from "@/lib/auth";
 
 // Helper function to check authorization
 async function isAuthorized(): Promise<boolean> {
   try {
     const cookieStore = await cookies();
     const session = cookieStore.get("admin_session");
-    return !!session && session.value === "session_token_admin_authorized";
+    return !!session && verifySessionToken(session.value);
   } catch {
     return false;
   }
@@ -85,7 +85,8 @@ export async function POST(request: Request) {
     }
 
     // Create session and associated flashcards
-    const newSession = await db.$transaction(async (tx: Prisma.TransactionClient) => {
+    // Type inference for transaction client dynamically, completely removing dependency on `Prisma` namespace import
+    const newSession = await db.$transaction(async (tx: any) => {
       const session = await tx.session.create({
         data: {
           slug: sanitizedSlug,
@@ -93,7 +94,7 @@ export async function POST(request: Request) {
         },
       });
 
-      const cardsData = flashcards.map((card, index) => ({
+      const cardsData = flashcards.map((card: any, index: number) => ({
         question: String(card.question || "").trim(),
         answer: String(card.answer || "").trim(),
         order: index,

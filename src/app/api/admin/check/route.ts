@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
+import { verifySessionToken } from "@/lib/auth";
 
 export async function GET() {
   try {
     const cookieStore = await cookies();
     const session = cookieStore.get("admin_session");
 
-    if (session && session.value === "session_token_admin_authorized") {
+    if (session && verifySessionToken(session.value)) {
       return NextResponse.json({ authorized: true });
     }
 

@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { db } from "@/lib/db";
+import { verifySessionToken } from "@/lib/auth";
 
 // Helper function to check authorization
 async function isAuthorized(): Promise<boolean> {
   try {
     const cookieStore = await cookies();
     const session = cookieStore.get("admin_session");
-    return !!session && session.value === "session_token_admin_authorized";
+    return !!session && verifySessionToken(session.value);
   } catch {
     return false;
   }
