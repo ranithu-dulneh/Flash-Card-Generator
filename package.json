@@ -3,10 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "prisma generate && next build",
+    "dev": "node ./prisma-setup.js && next dev",
+    "build": "node ./prisma-setup.js && prisma generate && next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "postinstall": "node ./prisma-setup.js && prisma generate"
   },
   "dependencies": {
     "@neondatabase/serverless": "^0.10.4",
