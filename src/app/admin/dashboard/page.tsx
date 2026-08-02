@@ -15,18 +15,23 @@ import {
   Loader2,
   X,
   BookOpen,
+  HelpCircle,
 } from "lucide-react";
 import Papa from "papaparse";
 
 interface FlashcardPreview {
   question: string;
-  answer: string;
+  answer?: string; // for flashcards
+  options?: string[]; // for quiz
+  correctAnswer?: number; // for quiz: 1-4
+  explanation?: string; // for quiz
 }
 
 interface SessionWithCount {
   id: string;
   slug: string;
   name: string;
+  type: "flashcards" | "quiz";
   createdAt: string;
   _count: {
     flashcards: number;
@@ -42,12 +47,13 @@ export default function AdminDashboard() {
   // Modal / Creation States
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [sessionName, setSessionName] = useState("");
+  const [sessionType, setSessionType] = useState<"flashcards" | "quiz">("flashcards");
   const [slug, setSlug] = useState("");
   const [isSlugManuallyEdited, setIsSlugManuallyEdited] = useState(false);
   const [csvFile, setCsvFile] = useState<File | null>(null);
   const [parsedCards, setParsedCards] = useState<FlashcardPreview[]>([]);
   const [hasHeaders, setHasHeaders] = useState(false);
-  const [firstRowAsHeaders, setFirstRowAsHeaders] = useState<[string, string] | null>(null);
+  const [firstRowAsHeaders, setFirstRowAsHeaders] = useState<string[] | null>(null);
   const [allRawRows, setAllRawRows] = useState<string[][]>([]);
   const [isCreating, setIsCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -86,6 +92,20 @@ export default function AdminDashboard() {
       setSlug(suggested);
     }
   }, [sessionName, isSlugManuallyEdited, isCreating]);
+
+  // Reset file and parser when switching session type to prevent layout discrepancies
+  const handleSessionTypeChange = (type: "flashcards" | "quiz") => {
+    setSessionType(type);
+    setCsvFile(null);
+    setParsedCards([]);
+    setAllRawRows([]);
+    setFirstRowAsHeaders(null);
+    setHasHeaders(false);
+    setCreateError(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
 
   // 2. Fetch Active Sessions
   const fetchSessions = async () => {
@@ -164,11 +184,14 @@ export default function AdminDashboard() {
 
         // Analyze first row for headers
         const firstRow = rows[0];
-        if (firstRow && firstRow.length >= 2) {
+        const minColumns = sessionType === "quiz" ? 7 : 2;
+        let calculatedHasHeaders = false;
+
+        if (firstRow && firstRow.length >= minColumns) {
           const valA = firstRow[0].toLowerCase();
           const valB = firstRow[1].toLowerCase();
 
-          // Standard header keywords
+          // Header keywords
           const isHeader =
             valA.includes("question") ||
             valA.includes("term") ||
@@ -177,18 +200,26 @@ export default function AdminDashboard() {
             valB.includes("answer") ||
             valB.includes("definition") ||
             valB.includes("meaning") ||
-            valB.includes("result");
+            valB.includes("option");
 
           if (isHeader) {
+            calculatedHasHeaders = true;
             setHasHeaders(true);
-            setFirstRowAsHeaders([firstRow[0], firstRow[1]]);
+            setFirstRowAsHeaders(firstRow.slice(0, minColumns));
           } else {
             setHasHeaders(false);
             setFirstRowAsHeaders(null);
           }
+        } else {
+          setCreateError(
+            sessionType === "quiz"
+              ? "The uploaded CSV must have at least 7 columns for a Quiz (Question, Option 1-4, Correct Index, Explanation)."
+              : "The uploaded CSV must have at least 2 columns for Flashcards (Question, Answer)."
+          );
+          return;
         }
 
-        parseCardsFromRows(rows, hasHeaders);
+        parseCardsFromRows(rows, calculatedHasHeaders);
       },
       error: (err) => {
         console.error("CSV parse error:", err);
@@ -204,11 +235,22 @@ export default function AdminDashboard() {
 
     for (let i = startIndex; i < rows.length; i++) {
       const row = rows[i];
-      if (row && row.length >= 2) {
-        cards.push({
-          question: row[0],
-          answer: row[1],
-        });
+      if (sessionType === "quiz") {
+        if (row && row.length >= 7) {
+          cards.push({
+            question: row[0],
+            options: [row[1], row[2], row[3], row[4]],
+            correctAnswer: Math.min(Math.max(parseInt(row[5]) || 1, 1), 4),
+            explanation: row[6],
+          });
+        }
+      } else {
+        if (row && row.length >= 2) {
+          cards.push({
+            question: row[0],
+            answer: row[1],
+          });
+        }
       }
     }
 
@@ -234,7 +276,11 @@ export default function AdminDashboard() {
       return;
     }
     if (parsedCards.length === 0) {
-      setCreateError("Please upload a valid CSV file with at least one question and answer.");
+      setCreateError(
+        sessionType === "quiz"
+          ? "Please upload a valid CSV file with at least 7 columns for the Quiz."
+          : "Please upload a valid CSV file with at least 2 columns for Flashcards."
+      );
       return;
     }
 
@@ -247,6 +293,7 @@ export default function AdminDashboard() {
         body: JSON.stringify({
           name: sessionName,
           slug,
+          type: sessionType,
           flashcards: parsedCards,
         }),
       });
@@ -257,6 +304,7 @@ export default function AdminDashboard() {
         // Reset states
         setIsModalOpen(false);
         setSessionName("");
+        setSessionType("flashcards");
         setSlug("");
         setIsSlugManuallyEdited(false);
         setCsvFile(null);
@@ -328,7 +376,7 @@ export default function AdminDashboard() {
               Manage Your Sessions
             </h2>
             <p className="text-slate-500 dark:text-slate-400 mt-1">
-              Create educational flashcard sets and share the clean links directly with your students.
+              Create educational flashcard sets or multiple choice quizzes and share the clean links directly with your students.
             </p>
           </div>
 
@@ -337,7 +385,7 @@ export default function AdminDashboard() {
             className="flex justify-center items-center gap-2 px-5 py-3 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white rounded-xl font-semibold shadow-lg shadow-indigo-150 dark:shadow-none transition cursor-pointer self-start md:self-auto"
           >
             <Plus className="w-5 h-5" />
-            Create Flashcard Session
+            Create Flashcard/Quiz
           </button>
         </div>
 
@@ -354,7 +402,7 @@ export default function AdminDashboard() {
             </div>
             <h3 className="text-xl font-bold text-slate-800 dark:text-slate-100">No active sessions yet</h3>
             <p className="text-slate-500 dark:text-slate-400 mt-2 max-w-md">
-              Create your very first session by uploading a CSV. Once created, you will get a magic link that your students can use to review vocabulary, formulas, historical dates, and more!
+              Create your very first session by uploading a CSV. Once created, you will get a magic link that your students can use to review vocabulary, formulas, quizzes, and more!
             </p>
             <button
               onClick={() => setIsModalOpen(true)}
@@ -372,9 +420,13 @@ export default function AdminDashboard() {
                 className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm p-6 flex flex-col justify-between hover:shadow-md transition duration-200 group"
               >
                 <div>
-                  <div className="flex justify-between items-start gap-3 mb-3">
-                    <span className="px-2.5 py-1 text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/50 rounded-full">
-                      {session._count.flashcards} {session._count.flashcards === 1 ? "card" : "cards"}
+                  <div className="flex justify-between items-center gap-3 mb-3">
+                    <span className={`px-2.5 py-1 text-xs font-bold rounded-full ${
+                      session.type === "quiz"
+                        ? "text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-950/50"
+                        : "text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/50"
+                    }`}>
+                      {session.type === "quiz" ? "Quiz" : "Flashcards"} ({session._count.flashcards})
                     </span>
                     <span className="text-xs text-slate-400 dark:text-slate-500">
                       {new Date(session.createdAt).toLocaleDateString(undefined, {
@@ -422,7 +474,7 @@ export default function AdminDashboard() {
                       rel="noopener noreferrer"
                       className="flex-1 flex justify-center items-center gap-1.5 py-2 text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded-xl border border-transparent hover:border-slate-100 dark:hover:border-slate-700/85 transition text-sm font-semibold"
                     >
-                      View Cards
+                      View Session
                       <ExternalLink className="w-3.5 h-3.5" />
                     </a>
 
@@ -464,7 +516,7 @@ export default function AdminDashboard() {
               <div className="flex items-center gap-2">
                 <Plus className="w-5 h-5 text-indigo-600" />
                 <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">
-                  New Flashcard Session
+                  New Flashcard / Quiz Session
                 </h3>
               </div>
               <button
@@ -485,7 +537,61 @@ export default function AdminDashboard() {
                 </div>
               )}
 
-              {/* Step 1: Info */}
+              {/* Step 1: Mode Switcher */}
+              <div>
+                <span className="block text-xs font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-3">
+                  Choose Session Mode
+                </span>
+                <div className="grid grid-cols-2 gap-4">
+                  <button
+                    type="button"
+                    onClick={() => handleSessionTypeChange("flashcards")}
+                    disabled={isCreating}
+                    className={`p-4 rounded-xl border text-left transition flex flex-col gap-1.5 cursor-pointer ${
+                      sessionType === "flashcards"
+                        ? "border-indigo-600 bg-indigo-50/50 dark:bg-indigo-950/20"
+                        : "border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className={`p-1.5 rounded-lg ${
+                        sessionType === "flashcards" ? "bg-indigo-600 text-white" : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400"
+                      }`}>
+                        <BookOpen className="w-4 h-4" />
+                      </div>
+                      <span className="font-bold text-sm text-slate-800 dark:text-slate-100">Flashcards</span>
+                    </div>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      Standard 2-column CSV file. Supports front question, back answer flipping.
+                    </p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleSessionTypeChange("quiz")}
+                    disabled={isCreating}
+                    className={`p-4 rounded-xl border text-left transition flex flex-col gap-1.5 cursor-pointer ${
+                      sessionType === "quiz"
+                        ? "border-purple-600 bg-purple-50/50 dark:bg-purple-950/20"
+                        : "border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className={`p-1.5 rounded-lg ${
+                        sessionType === "quiz" ? "bg-purple-600 text-white" : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400"
+                      }`}>
+                        <HelpCircle className="w-4 h-4" />
+                      </div>
+                      <span className="font-bold text-sm text-slate-800 dark:text-slate-100">Interactive Quiz</span>
+                    </div>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      7-column CSV file. Supports multiple choice, correct answers, and explanations.
+                    </p>
+                  </button>
+                </div>
+              </div>
+
+              {/* Step 2: Info */}
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
                   <label className="block text-xs font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
@@ -533,7 +639,7 @@ export default function AdminDashboard() {
                 </div>
               </div>
 
-              {/* Step 2: Drag and Drop CSV Upload */}
+              {/* Step 3: Drag and Drop CSV Upload */}
               <div>
                 <label className="block text-xs font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
                   Upload CSV File
@@ -551,7 +657,11 @@ export default function AdminDashboard() {
                       setCreateError("Please drop a valid .csv file.");
                     }
                   }}
-                  className="border-2 border-dashed border-slate-200 dark:border-slate-700 hover:border-indigo-500 dark:hover:border-indigo-400 rounded-2xl p-8 text-center bg-slate-50/50 dark:bg-slate-800/10 cursor-pointer transition flex flex-col items-center justify-center relative"
+                  className={`border-2 border-dashed rounded-2xl p-8 text-center bg-slate-50/50 dark:bg-slate-800/10 cursor-pointer transition flex flex-col items-center justify-center relative ${
+                    sessionType === "quiz"
+                      ? "border-purple-200 hover:border-purple-500 dark:border-purple-850 dark:hover:border-purple-400"
+                      : "border-slate-200 hover:border-indigo-500 dark:border-slate-800 dark:hover:border-indigo-400"
+                  }`}
                   onClick={() => fileInputRef.current?.click()}
                 >
                   <input
@@ -561,14 +671,18 @@ export default function AdminDashboard() {
                     accept=".csv"
                     className="hidden"
                   />
-                  <div className="p-3 bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 rounded-xl shadow-xs border border-slate-100 dark:border-slate-700 mb-3">
+                  <div className={`p-3 bg-white dark:bg-slate-800 rounded-xl shadow-xs border border-slate-100 dark:border-slate-700 mb-3 ${
+                    sessionType === "quiz" ? "text-purple-600 dark:text-purple-400" : "text-indigo-600 dark:text-indigo-400"
+                  }`}>
                     <Upload className="w-6 h-6" />
                   </div>
                   <h4 className="text-sm font-bold text-slate-700 dark:text-slate-300">
                     {csvFile ? csvFile.name : "Select or drag your CSV file"}
                   </h4>
-                  <p className="text-xs text-slate-400 mt-1 max-w-sm">
-                    Two columns exactly: Column A is the Question and Column B is the Answer.
+                  <p className="text-xs text-slate-400 mt-1 max-w-sm leading-relaxed">
+                    {sessionType === "quiz"
+                      ? "7 columns exactly: Question, Opt 1, Opt 2, Opt 3, Opt 4, Correct Ans (1-4), Explanation."
+                      : "2 columns exactly: Column A is the Question and Column B is the Answer."}
                   </p>
 
                   {csvFile && (
@@ -579,7 +693,7 @@ export default function AdminDashboard() {
                 </div>
               </div>
 
-              {/* Step 3: Column Header mapping & Preview */}
+              {/* Step 4: Column Header mapping & Preview */}
               {parsedCards.length > 0 && (
                 <div className="space-y-4 pt-2">
                   <div className="flex items-center justify-between">
@@ -588,7 +702,7 @@ export default function AdminDashboard() {
                         CSV Data Preview
                       </h4>
                       <p className="text-[11px] text-slate-400 mt-0.5">
-                        Found {parsedCards.length} flashcard{parsedCards.length === 1 ? "" : "s"}
+                        Found {parsedCards.length} {sessionType === "quiz" ? "quiz question" : "flashcard"}{parsedCards.length === 1 ? "" : "s"}
                       </p>
                     </div>
 
@@ -601,28 +715,57 @@ export default function AdminDashboard() {
                           disabled={isCreating}
                           className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer w-4 h-4"
                         />
-                        Skip first row (Headers: {firstRowAsHeaders[0]}, {firstRowAsHeaders[1]})
+                        Skip first row (Headers: {firstRowAsHeaders[0]}, {firstRowAsHeaders[1]}...)
                       </label>
                     )}
                   </div>
 
                   {/* Tiny Table Preview */}
                   <div className="border border-slate-150 dark:border-slate-850 rounded-xl overflow-hidden text-sm">
-                    <div className="grid grid-cols-2 bg-slate-50 dark:bg-slate-800/80 px-4 py-2 font-bold text-slate-600 dark:text-slate-300 border-b border-slate-150 dark:border-slate-850 text-xs">
-                      <div>Column A (Question)</div>
-                      <div>Column B (Answer)</div>
-                    </div>
+                    {sessionType === "quiz" ? (
+                      <div className="grid grid-cols-4 bg-slate-50 dark:bg-slate-800/80 px-4 py-2 font-bold text-slate-600 dark:text-slate-300 border-b border-slate-150 dark:border-slate-850 text-[10px] uppercase tracking-wide">
+                        <div className="col-span-1 truncate border-r border-slate-150 dark:border-slate-850 pr-2">Question</div>
+                        <div className="col-span-1 truncate border-r border-slate-150 dark:border-slate-850 px-2">Options (1-4)</div>
+                        <div className="col-span-1 truncate border-r border-slate-150 dark:border-slate-850 px-2">Ans No.</div>
+                        <div className="col-span-1 truncate pl-2">Explanation</div>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-2 bg-slate-50 dark:bg-slate-800/80 px-4 py-2 font-bold text-slate-600 dark:text-slate-300 border-b border-slate-150 dark:border-slate-850 text-xs">
+                        <div>Column A (Question)</div>
+                        <div>Column B (Answer)</div>
+                      </div>
+                    )}
                     <div className="divide-y divide-slate-100 dark:divide-slate-800/60 max-h-[180px] overflow-y-auto">
                       {parsedCards.slice(0, 4).map((card, idx) => (
-                        <div
-                          key={idx}
-                          className="grid grid-cols-2 px-4 py-2.5 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 text-xs"
-                        >
-                          <div className="truncate pr-4 border-r border-slate-100 dark:border-slate-800/40">
-                            {card.question}
+                        sessionType === "quiz" ? (
+                          <div
+                            key={idx}
+                            className="grid grid-cols-4 px-4 py-2.5 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 text-xs"
+                          >
+                            <div className="col-span-1 truncate pr-2 border-r border-slate-100 dark:border-slate-800/40 font-semibold text-slate-800 dark:text-slate-100">
+                              {card.question}
+                            </div>
+                            <div className="col-span-1 truncate px-2 border-r border-slate-100 dark:border-slate-800/40 text-slate-500">
+                              {card.options?.join(", ")}
+                            </div>
+                            <div className="col-span-1 truncate px-2 border-r border-slate-100 dark:border-slate-800/40 font-mono text-center text-purple-600 font-bold">
+                              Option {card.correctAnswer}
+                            </div>
+                            <div className="col-span-1 truncate pl-2 text-slate-400 italic">
+                              {card.explanation}
+                            </div>
                           </div>
-                          <div className="truncate pl-4">{card.answer}</div>
-                        </div>
+                        ) : (
+                          <div
+                            key={idx}
+                            className="grid grid-cols-2 px-4 py-2.5 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 text-xs"
+                          >
+                            <div className="truncate pr-4 border-r border-slate-100 dark:border-slate-800/40 font-semibold text-slate-800 dark:text-slate-100">
+                              {card.question}
+                            </div>
+                            <div className="truncate pl-4">{card.answer}</div>
+                          </div>
+                        )
                       ))}
                       {parsedCards.length > 4 && (
                         <div className="px-4 py-2 bg-slate-50/50 dark:bg-slate-800/10 text-center text-[10px] text-slate-400 italic">
@@ -647,7 +790,11 @@ export default function AdminDashboard() {
                 <button
                   type="submit"
                   disabled={isCreating || parsedCards.length === 0}
-                  className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white rounded-xl font-semibold transition cursor-pointer disabled:opacity-50"
+                  className={`flex items-center gap-2 px-5 py-2.5 text-white rounded-xl font-semibold transition cursor-pointer disabled:opacity-50 ${
+                    sessionType === "quiz"
+                      ? "bg-purple-600 hover:bg-purple-500 active:bg-purple-700"
+                      : "bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700"
+                  }`}
                 >
                   {isCreating ? (
                     <>

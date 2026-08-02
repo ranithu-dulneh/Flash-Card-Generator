@@ -28,6 +28,7 @@ export async function GET() {
       id: session.id,
       slug: session.slug,
       name: session.name,
+      type: session.type || "flashcards",
       createdAt: new Date(session.createdAt).toISOString(),
       _count: {
         flashcards: session.flashcards ? session.flashcards.length : 0,
@@ -51,7 +52,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const { slug, name, flashcards } = await request.json();
+    const { slug, name, type, flashcards } = await request.json();
 
     if (!slug || !name || !Array.isArray(flashcards) || flashcards.length === 0) {
       return NextResponse.json(
@@ -59,6 +60,8 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
+
+    const sessionType = type === "quiz" ? "quiz" : "flashcards";
 
     // Sanitize slug: lowercase, replace non-alphanumeric with hyphen
     const sanitizedSlug = slug
@@ -85,7 +88,7 @@ export async function POST(request: Request) {
     }
 
     // Create session and associated flashcards via Firebase RTDB
-    const newSession = await createSession(sanitizedSlug, name, flashcards);
+    const newSession = await createSession(sanitizedSlug, name, sessionType, flashcards);
 
     return NextResponse.json({
       success: true,
@@ -94,6 +97,7 @@ export async function POST(request: Request) {
         id: newSession.id,
         slug: newSession.slug,
         name: newSession.name,
+        type: newSession.type,
         createdAt: new Date(newSession.createdAt).toISOString(),
       },
     });

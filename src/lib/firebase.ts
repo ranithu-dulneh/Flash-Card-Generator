@@ -18,7 +18,10 @@ export const rtdb = getDatabase(app);
 export interface FirebaseFlashcard {
   id: string;
   question: string;
-  answer: string;
+  answer?: string; // for flashcards
+  options?: string[]; // for quiz
+  correctAnswer?: number; // for quiz: 1-4
+  explanation?: string; // for quiz
   order: number;
 }
 
@@ -26,6 +29,7 @@ export interface FirebaseSession {
   id: string;
   slug: string;
   name: string;
+  type: "flashcards" | "quiz";
   createdAt: number;
   flashcards: FirebaseFlashcard[];
 }
@@ -33,7 +37,8 @@ export interface FirebaseSession {
 export async function createSession(
   slug: string,
   name: string,
-  flashcards: { question: string; answer: string }[]
+  type: "flashcards" | "quiz",
+  flashcards: any[]
 ): Promise<FirebaseSession> {
   const sessionRef = ref(rtdb, `sessions/${slug}`);
 
@@ -41,19 +46,35 @@ export async function createSession(
     ? crypto.randomUUID()
     : Math.random().toString(36).substring(2);
 
-  const formattedCards: FirebaseFlashcard[] = flashcards.map((card, index) => ({
-    id: typeof crypto !== "undefined" && crypto.randomUUID
+  const formattedCards: FirebaseFlashcard[] = flashcards.map((card, index) => {
+    const cardId = typeof crypto !== "undefined" && crypto.randomUUID
       ? crypto.randomUUID()
-      : Math.random().toString(36).substring(2),
-    question: String(card.question || "").trim(),
-    answer: String(card.answer || "").trim(),
-    order: index,
-  }));
+      : Math.random().toString(36).substring(2);
+
+    if (type === "quiz") {
+      return {
+        id: cardId,
+        question: String(card.question || "").trim(),
+        options: Array.isArray(card.options) ? card.options.map((opt: any) => String(opt || "").trim()) : [],
+        correctAnswer: Number(card.correctAnswer || 1),
+        explanation: String(card.explanation || "").trim(),
+        order: index,
+      };
+    } else {
+      return {
+        id: cardId,
+        question: String(card.question || "").trim(),
+        answer: String(card.answer || "").trim(),
+        order: index,
+      };
+    }
+  });
 
   const sessionData: FirebaseSession = {
     id,
     slug,
     name: name.trim(),
+    type,
     createdAt: Date.now(),
     flashcards: formattedCards,
   };
@@ -66,7 +87,12 @@ export async function getSession(slug: string): Promise<FirebaseSession | null> 
   const sessionRef = ref(rtdb, `sessions/${slug}`);
   const snapshot = await get(sessionRef);
   if (snapshot.exists()) {
-    return snapshot.val() as FirebaseSession;
+    const val = snapshot.val();
+    // Support legacy sessions without a type (default to "flashcards")
+    if (!val.type) {
+      val.type = "flashcards";
+    }
+    return val as FirebaseSession;
   }
   return null;
 }
@@ -82,6 +108,12 @@ export async function getAllSessions(): Promise<FirebaseSession[]> {
   if (snapshot.exists()) {
     const data = snapshot.val();
     const sessionsList = Object.values(data) as FirebaseSession[];
+
+    // Support legacy sessions without a type
+    sessionsList.forEach((s) => {
+      if (!s.type) s.type = "flashcards";
+    });
+
     return sessionsList.sort((a, b) => b.createdAt - a.createdAt);
   }
   return [];

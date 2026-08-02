@@ -1,6 +1,7 @@
 import { getSession } from "@/lib/firebase";
 import { notFound } from "next/navigation";
 import StudentFlashcardClient from "./StudentFlashcardClient";
+import StudentQuizClient from "./StudentQuizClient";
 
 interface PageProps {
   params: Promise<{
@@ -19,8 +20,8 @@ export async function generateMetadata({ params }: PageProps) {
   }
 
   return {
-    title: `${session.name} - Flashcards`,
-    description: `Review flashcards for ${session.name} online.`,
+    title: `${session.name} - ${session.type === "quiz" ? "Quiz" : "Flashcards"}`,
+    description: `Review ${session.type === "quiz" ? "quiz questions" : "flashcards"} for ${session.name} online.`,
   };
 }
 
@@ -32,6 +33,26 @@ export default async function StudentSessionPage({ params }: PageProps) {
 
   if (!session) {
     notFound();
+  }
+
+  if (session.type === "quiz") {
+    return (
+      <StudentQuizClient
+        session={{
+          id: session.id,
+          name: session.name,
+          slug: session.slug,
+          flashcards: session.flashcards ? session.flashcards.map((fc: any) => ({
+            id: fc.id,
+            question: fc.question,
+            options: fc.options || [],
+            correctAnswer: fc.correctAnswer || 1,
+            explanation: fc.explanation || "",
+            order: fc.order,
+          })) : [],
+        }}
+      />
+    );
   }
 
   return (
